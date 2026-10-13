@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return signedIn() && request.auth.uid == data.uid;
+    }
+
+    function validPost(data) {
+      return data.keys().hasAll(['uid', 'type', 'title', 'body', 'date', 'visibility', 'createdAt', 'updatedAt'])
+        && data.type in ['note', 'exhibit']
+        && data.visibility in ['public', 'private']
+        && data.title is string && data.title.size() <= 100
+        && data.body is string && data.body.size() <= 20000
+        && data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    match /posts/{postId} {
+      allow read: if resource.data.visibility == 'public' || isOwner(resource.data);
+      allow create: if isOwner(request.resource.data) && validPost(request.resource.data);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && validPost(request.resource.data);
+      allow delete: if isOwner(resource.data);
+    }
+  }
+}
